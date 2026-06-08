@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El Hechizo de la Hechicera</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css.css">
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div id="orb"></div>
+<img src="disney.svg" id="logo-disney" alt="Disney">
+<div id="wrap">
+
+  <div class="titulo-wrap">
+    <div class="titulo">El Hechizo<br>de la Hechicera</div>
+    <div class="subtitulo">repite la secuencia mágica</div>
+  </div>
+
+  <div id="hud">
+    <div>Ronda<strong id="ronda-n">—</strong></div>
+    <div>Puntos<strong id="pts-n">0</strong></div>
+  </div>
+
+  <div id="varita">🪄</div>
+
+<div id="grid">
+
+  <!-- MICKEY -->
+  <div class="card" data-char="mickey" id="c-mickey">
+    <img class="char-img" src="mickey.webp" alt="Mickey">
+    <span class="char-name">Mickey</span>
+  </div>
+
+  <!-- MINNIE -->
+  <div class="card" data-char="minnie" id="c-minnie">
+    <img class="char-img" src="minnie.webp" alt="Minnie">
+    <span class="char-name">Minnie</span>
+  </div>
+
+  <!-- GOOFY -->
+  <div class="card" data-char="goofy" id="c-goofy">
+    <img class="char-img" src="goofy.webp" alt="Goofy">
+    <span class="char-name">Goofy</span>
+  </div>
+
+  <!-- DONALD -->
+  <div class="card" data-char="donald" id="c-donald">
+    <img class="char-img" src="donald.webp" alt="Donald">
+    <span class="char-name">Donald</span>
+  </div>
+
+</div>
+
+  <div id="progreso-wrap"></div>
+  <div id="mensaje">✨ Prepárate para el hechizo ✨</div>
+
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay">
+  <div id="ov-deco">🪄</div>
+  <div id="ov-titulo">El Hechizo<br>de la Hechicera</div>
+  <div id="ov-sub">
+    Repite la secuencia de personajes<br>
+    exactamente como la hechicera la muestra.<br><br>
+    <em>Un solo error rompe el hechizo.</em>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:.6rem;margin:.5rem 0;">
+    <div class="regla"><span class="regla-icon">👁️</span> Observá la secuencia que se ilumina</div>
+    <div class="regla"><span class="regla-icon">👆</span> Repetíla en el mismo orden</div>
+    <div class="regla"><span class="regla-icon">⚡</span> Un error y el hechizo se rompe</div>
+  </div>
+  <button id="btn-play">✨ Comenzar ✨</button>
+</div>
+
+<script>
+/* ── STARFIELD CANVAS ── */
+const canvas = document.getElementById('bg-canvas');
+const ctx2d  = canvas.getContext('2d');
+let stars = [];
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 120; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.5 + .3,
+      a: Math.random(),
+      speed: .003 + Math.random() * .006,
+      gold: Math.random() < .2
+    });
+  }
+}
+
+function drawStars(t) {
+  ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+  stars.forEach(s => {
+    const alpha = .3 + .7 * Math.abs(Math.sin(t * s.speed + s.a));
+    ctx2d.beginPath();
+    ctx2d.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx2d.fillStyle = s.gold
+      ? `rgba(255,215,0,${alpha})`
+      : `rgba(255,255,255,${alpha * .8})`;
+    ctx2d.fill();
+  });
+}
+
+let t = 0;
+function animLoop() {
+  t += .5;
+  drawStars(t);
+  requestAnimationFrame(animLoop);
+}
+
+resizeCanvas(); initStars(); animLoop();
+window.addEventListener('resize', () => { resizeCanvas(); initStars(); });
+
+/* ── GAME LOGIC ── */
+const CHARS = ['mickey','minnie','goofy','donald'];
+const MENSAJES_SHOW = [
+  '🔮 Observa el hechizo...',
+  '🌟 Memoriza la secuencia...',
+  '🪄 Presta atención...',
+  '✨ Sigue el rastro mágico...',
+];
+const MENSAJES_INPUT = [
+  '💫 ¡Ahora tú! Repite el hechizo.',
+  '🎇 ¡Tu turno, aprendiz!',
+  '🌙 Demuestra tu magia.',
+  '⭐ Repite lo que viste.',
+];
+
+let secuencia=[], paso=0, puntos=0, enInput=false, bloqueado=false;
+
+const cards={};
+CHARS.forEach(c => cards[c] = document.getElementById('c-'+c));
+
+const mensajeEl = document.getElementById('mensaje');
+const rondaN    = document.getElementById('ronda-n');
+const ptsN      = document.getElementById('pts-n');
+const overlay   = document.getElementById('overlay');
+const ovTitulo  = document.getElementById('ov-titulo');
+const ovSub     = document.getElementById('ov-sub');
+const btnPlay   = document.getElementById('btn-play');
+const progWrap  = document.getElementById('progreso-wrap');
+
+function setMensaje(txt) {
+  mensajeEl.style.opacity=0;
+  setTimeout(()=>{ mensajeEl.textContent=txt; mensajeEl.style.opacity=1; }, 200);
+}
+
+function litCard(char, ms=520) {
+  return new Promise(res=>{
+    const el=cards[char];
+    el.classList.add('lit'); playTone(char);
+    setTimeout(()=>{ el.classList.remove('lit'); setTimeout(res,100); }, ms);
+  });
+}
+
+function buildProgreso(total, done) {
+  progWrap.innerHTML='';
+  for(let i=0;i<total;i++){
+    const d=document.createElement('div');
+    d.className='dot'+(i<done?' done':i===done?' active':'');
+    progWrap.appendChild(d);
+  }
+}
+
+async function mostrarSecuencia() {
+  bloqueado=true; enInput=false;
+  setMensaje(MENSAJES_SHOW[Math.floor(Math.random()*MENSAJES_SHOW.length)]);
+  buildProgreso(secuencia.length,-1);
+  await delay(900);
+  const speed=Math.max(280,600-secuencia.length*22);
+  for(let i=0;i<secuencia.length;i++){
+    buildProgreso(secuencia.length,i);
+    await litCard(secuencia[i],speed);
+    await delay(55);
+  }
+  buildProgreso(secuencia.length,0);
+  await delay(350);
+  paso=0; enInput=true; bloqueado=false;
+  setMensaje(MENSAJES_INPUT[Math.floor(Math.random()*MENSAJES_INPUT.length)]);
+}
+
+function nuevaRonda() {
+  secuencia.push(CHARS[Math.floor(Math.random()*CHARS.length)]);
+  rondaN.textContent=secuencia.length;
+  mostrarSecuencia();
+}
+
+async function handleClick(char) {
+  if(!enInput||bloqueado) return;
+  bloqueado=true;
+  await litCard(char,260);
+  if(char===secuencia[paso]){
+    paso++;
+    buildProgreso(secuencia.length,paso);
+    if(paso===secuencia.length){
+      const bonus=secuencia.length*10;
+      puntos+=bonus; ptsN.textContent=puntos;
+      setMensaje('🌟 ¡Hechizo completado! +'+bonus+' pts');
+      lanzarSparkles(); enInput=false;
+      await delay(1100); nuevaRonda();
+    } else { bloqueado=false; }
+  } else { enInput=false; gameOver(); }
+}
+
+async function gameOver() {
+  setMensaje('💔 ¡El hechizo se rompió!');
+  await delay(700);
+  ovTitulo.innerHTML='💔 El hechizo<br>se rompió';
+  ovTitulo.style.color='#ff6b8a';
+  ovTitulo.style.textShadow='0 0 30px rgba(255,107,138,.5)';
+  ovSub.innerHTML=`Llegaste a la ronda <strong style="color:var(--gold);">${secuencia.length}</strong><br><br>
+    <span style="font-family:'Cinzel Decorative',serif;font-size:1.8rem;color:#fff;">${puntos} pts</span><br><br>
+    <em>¿Intentas dominar el hechizo otra vez?</em>`;
+  btnPlay.textContent='🪄 Volver a intentar';
+  overlay.classList.remove('hidden');
+}
+
+function iniciar() {
+  secuencia=[]; paso=0; puntos=0;
+  rondaN.textContent='—'; ptsN.textContent=0;
+  progWrap.innerHTML='';
+  ovTitulo.innerHTML='El Hechizo<br>de la Hechicera';
+  ovTitulo.style.color='var(--gold)';
+  ovTitulo.style.textShadow='0 0 30px rgba(255,215,0,.5)';
+  overlay.classList.add('hidden');
+  setMensaje('✨ El hechizo comienza...');
+  setTimeout(nuevaRonda,600);
+}
+
+CHARS.forEach(c=>cards[c].addEventListener('click',()=>handleClick(c)));
+btnPlay.addEventListener('click',iniciar);
+
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ── AUDIO ── */
+const AudioCtx=window.AudioContext||window.webkitAudioContext;
+let actx=null;
+function getCtx(){ if(!actx) actx=new AudioCtx(); return actx; }
+const TONES={ mickey:523.25, minnie:659.25, goofy:392, donald:440 };
+function playTone(char){
+  try{
+    const c=getCtx(), osc=c.createOscillator(), g=c.createGain();
+    osc.connect(g); g.connect(c.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(TONES[char],c.currentTime);
+    g.gain.setValueAtTime(.22,c.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.45);
+    osc.start(c.currentTime); osc.stop(c.currentTime+.45);
+  }catch(e){}
+}
+
+/* ── SPARKLES ── */
+function lanzarSparkles(){
+  const items=['✨','⭐','🌟','💫','🪄','🌠'];
+  for(let i=0;i<10;i++){
+    setTimeout(()=>{
+      const s=document.createElement('div');
+      s.className='sparkle';
+      s.textContent=items[Math.floor(Math.random()*items.length)];
+      s.style.left=(8+Math.random()*84)+'vw';
+      s.style.top=(5+Math.random()*65)+'vh';
+      document.body.appendChild(s);
+      setTimeout(()=>s.remove(),1400);
+    },i*70);
+  }
+}
+</script>
+</body>
+</html>
